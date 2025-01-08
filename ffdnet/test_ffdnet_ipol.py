@@ -18,6 +18,7 @@ import cv2
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
+
 from models import FFDNet
 from utils import batch_psnr, normalize, init_logger_ipol, \
 				variable_to_cv2_image, remove_dataparallel_wrapper, is_rgb
@@ -74,7 +75,6 @@ def test_ffdnet(**args):
 				model_fn)
 
 	# Create model
-	print('Loading model ...\n')
 	net = FFDNet(num_input_channels=in_ch)
 
 	# Load saved weights

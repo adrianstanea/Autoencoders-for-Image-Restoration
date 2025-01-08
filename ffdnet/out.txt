@@ -1,0 +1,4 @@
+### RGB denoising ###
+	PSNR noisy 14.16dB
+	PSNR denoised 27.68dB
+	Runtime 1.2508s

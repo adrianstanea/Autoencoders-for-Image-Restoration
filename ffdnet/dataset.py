@@ -19,7 +19,7 @@ import cv2
 import h5py
 import torch
 import torch.utils.data as udata
-from utils import data_augmentation, normalize
+from .utils import data_augmentation, normalize
 
 def img_to_patches(img, win, stride=1):
 	r"""Converts an image to an array of patches.
