@@ -14,11 +14,14 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 import subprocess
 import math
 import logging
+import sys
 import numpy as np
 import cv2
 import torch
 import torch.nn as nn
 from skimage.measure.simple_metrics import compare_psnr
+
+from models import FFDNet
 
 def weights_init_kaiming(lyr):
 	r"""Initializes weights of the model according to the "He" initialization
@@ -252,6 +255,97 @@ def is_rgb(im_path):
 	if (len(im.shape) == 3):
 		if not(np.allclose(im[...,0], im[...,1]) and np.allclose(im[...,2], im[...,1])):
 			rgb = True
-	print("rgb: {}".format(rgb))
-	print("im shape: {}".format(im.shape))
 	return rgb
+
+def load_image(im_path, expanded_h=False, expanded_w=False):
+	r"""Loads an image from a file
+
+	Args:
+		im_path: path to the image file
+	"""
+
+	# Check if input exists and if it is RGB
+	try:
+		rgb_den = is_rgb(im_path=im_path)
+	except:
+		raise Exception('Could not open the input image')
+
+	# Open image as a CxHxW torch.Tensor
+	if rgb_den:
+		in_ch = 3
+		model_type = 'models/net_rgb.pth'
+		imorig = cv2.imread(im_path)
+		# from HxWxC to CxHxW, RGB image
+		imorig = (cv2.cvtColor(imorig, cv2.COLOR_BGR2RGB)).transpose(2, 0, 1)
+	else:
+		# from HxWxC to  CxHxW grayscale image (C=1)
+		in_ch = 1
+		model_type = 'models/net_gray.pth'
+		imorig = cv2.imread(im_path, cv2.IMREAD_GRAYSCALE)
+		imorig = np.expand_dims(imorig, 0)
+	# (B=1)xCxHxW
+	imorig = np.expand_dims(imorig, 0)
+	return imorig, model_type, in_ch, rgb_den
+
+def handle_odd_sizes(imorig):
+	expanded_h = False
+	expanded_w = False
+	sh_im = imorig.shape
+	if sh_im[2]%2 == 1:
+		expanded_h = True
+		imorig = np.concatenate((imorig, \
+				imorig[:, :, -1, :][:, :, np.newaxis, :]), axis=2)
+
+	if sh_im[3]%2 == 1:
+		expanded_w = True
+		imorig = np.concatenate((imorig, \
+				imorig[:, :, :, -1][:, :, :, np.newaxis]), axis=3)
+	return imorig, expanded_h, expanded_w
+
+def load_FFDNET(model_type, in_ch, use_cpu="True"):
+	# Absolute path to model file
+	ffdnet = FFDNet(num_input_channels=in_ch)
+
+	# Load saved weights
+	if not use_cpu:
+		state_dict = torch.load(model_type)
+		device_ids = [0]
+		model = nn.DataParallel(ffdnet, device_ids=device_ids).cuda()
+	else:
+		state_dict = torch.load(model_type, map_location='cpu')
+		state_dict = remove_dataparallel_wrapper(state_dict)
+		model = ffdnet
+	model.load_state_dict(state_dict)
+	return model
+
+def load_logger(name=__name__, level=logging.DEBUG):
+	"""
+    Sets up and returns a logger with the specified name and level.
+    Logs are directed to stdout with a specific format.
+    
+    :param name: Name of the logger.
+    :param level: Logging level.
+    :return: Configured logger.
+    """
+	logger = logging.getLogger(name)
+	logger.setLevel(level)
+    
+    # Check if handlers are already added to avoid duplicate logs
+	if not logger.handlers:
+		# Create a StreamHandler to stdout
+		handler = logging.StreamHandler(sys.stdout)
+		handler.setLevel(level)
+		
+		# Create a formatter and set it for the handler
+		formatter = logging.Formatter(
+			fmt='%(asctime)s  %(name)s [%(levelname)s] : %(message)s',
+			datefmt='%Y-%m-%d %H:%M:%S'
+		)
+		handler.setFormatter(formatter)
+		
+		# Add the handler to the logger
+		logger.addHandler(handler)
+		
+		# Prevent log messages from being propagated to the root logger
+		logger.propagate = False
+	return logger
